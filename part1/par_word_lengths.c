@@ -47,6 +47,7 @@ int count_word_lengths(const char *file_name, int *counts) {
         }
     }
 
+    // error check fgetc
     if(ferror(fp) != 0) {
         perror("fgetc");
         if(fclose(fp) != 0) {
@@ -55,7 +56,6 @@ int count_word_lengths(const char *file_name, int *counts) {
         return -1;
     }
 
-    // ADD EH
     if(fclose(fp) != 0) {
         perror("error closing file");
         return -1;
@@ -74,10 +74,12 @@ int count_word_lengths(const char *file_name, int *counts) {
  */
 int process_file(const char *file_name, int out_fd) {
     int counts[MAX_WORD_LEN];
+    // error check count_word_lengths
     if (count_word_lengths(file_name, counts) == -1) {
         return -1;
     }
 
+    // write to pipe and error check
     if(write(out_fd, &counts, sizeof(counts)) == -1) {
         perror("write");
         return -1;
@@ -92,16 +94,15 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    // TODO Create a pipe for child processes to write their results
+    // Create a pipe for child processes to write their results
     int pipefds[2];
-    // needs EH
     // 0 for read, 1 for write
     if(pipe(pipefds) == -1) {
         perror("pipe");
         return 1;
     } 
 
-    // TODO Fork a child to analyze each specified file (names are argv[1], argv[2], ...)
+    // Fork a child to analyze each specified file (names are argv[1], argv[2], ...)
     for(int i = 1; i < argc; i++) {
         pid_t child_pid = fork();
 
@@ -131,6 +132,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    // close write end and error check
     if (close(pipefds[1])) {
         perror("close");
         if (close(pipefds[0])) {
@@ -142,7 +144,10 @@ int main(int argc, char **argv) {
     // Wait for all children to finish and make sure that they all exited correctly
     for(int i = 0; i<argc-1; i++) {
         int status;
-        wait(&status);
+        if (wait(&status) == -1) {
+            perror("wait");
+            return 1;
+        }
 
         if (WIFEXITED(status)) {
             int exit_status = WEXITSTATUS(status);
@@ -175,6 +180,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    // close read end and error check
     if (close(pipefds[0])) {
         perror("close");
         return 1;
