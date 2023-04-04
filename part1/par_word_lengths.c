@@ -21,7 +21,7 @@ int count_word_lengths(const char *file_name, int *counts) {
     // open and EH file
     FILE *fp = fopen(file_name, "r");
     if(fp == NULL) {
-        perror("Error opening file");
+        perror("fopen");
         return -1;
     }
 
@@ -41,19 +41,25 @@ int count_word_lengths(const char *file_name, int *counts) {
         } else {
             if(word_length > 0) {
                 // increment counts array for the word's length
-                counts[word_length]++;
+                counts[word_length-1]++;
                 word_length = 0;
             }
         }
     }
-    // ADD EH
+
     if(ferror(fp) != 0) {
-        fclose(fp);
-        
+        perror("fgetc");
+        if(fclose(fp) != 0) {
+            perror("error closing file");
+        }
+        return -1;
     }
 
     // ADD EH
-    fclose(fp);
+    if(fclose(fp) != 0) {
+        perror("error closing file");
+        return -1;
+    }
 
     return 0;
 }
@@ -67,16 +73,16 @@ int count_word_lengths(const char *file_name, int *counts) {
  * Returns 0 on success or -1 on error
  */
 int process_file(const char *file_name, int out_fd) {
-    //int counts[MAX_WORD_LEN];
-    int *counts = malloc(MAX_WORD_LEN * sizeof(int));
-    count_word_lengths(file_name, counts);
+    int counts[MAX_WORD_LEN];
+    if (count_word_lengths(file_name, counts) == -1) {
+        return -1;
+    }
 
     if(write(out_fd, &counts, sizeof(counts)) == -1) {
         perror("write");
-        free(counts);
         return -1;
     }
-    free(counts);
+
     return 0;
 }
 
@@ -88,35 +94,96 @@ int main(int argc, char **argv) {
 
     // TODO Create a pipe for child processes to write their results
     int pipefds[2];
-    pipe(pipefds); // 0 for read, 1 for write
+    // needs EH
+    // 0 for read, 1 for write
+    if(pipe(pipefds) == -1) {
+        perror("pipe");
+        return 1;
+    } 
 
     // TODO Fork a child to analyze each specified file (names are argv[1], argv[2], ...)
     for(int i = 1; i < argc; i++) {
         pid_t child_pid = fork();
 
-        if(child_pid == -1) {
-            // error
+        if(child_pid == -1) { // error check fork
+            perror("fork");
+            if (close(pipefds[0])) {
+                perror("close");
+            }
+            if (close(pipefds[0])) {
+                perror("close");
+            }
+            return 1;
         } else if(child_pid == 0) { // child
-            close(pipefds[0]);
-            process_file(argv[i], pipefds[1]);
-            close(pipefds[1]);
+            int exit_code = 0;
+            if (close(pipefds[0])) {
+                perror("close");
+                exit_code = -1;
+            }
+            if (process_file(argv[i], pipefds[1])) {
+                exit_code = -1;
+            }
+            if (close(pipefds[1])) {
+                perror("close");
+                exit_code = -1;
+            }
+            exit(exit_code);
         }
     }
 
-    // TODO Aggregate all the results together by reading from the pipe in the parent
-    close(pipefds[1]);
-    int *counts = malloc(MAX_WORD_LEN * sizeof(int));
-    int *tempCounts = malloc(MAX_WORD_LEN * sizeof(int));
+    if (close(pipefds[1])) {
+        perror("close");
+        if (close(pipefds[0])) {
+            perror("close");
+        }
+        return -1;
+    }
+
+    // Wait for all children to finish and make sure that they all exited correctly
+    for(int i = 0; i<argc-1; i++) {
+        int status;
+        wait(&status);
+
+        if (WIFEXITED(status)) {
+            int exit_status = WEXITSTATUS(status);
+            if (exit_status == -1) {
+                return 1;
+            }
+        }
+    }
+
+    // Initialze int arrays
+    int counts[MAX_WORD_LEN];
+    int tempCounts[MAX_WORD_LEN];
+    for (int i = 0; i<MAX_WORD_LEN; i++) {
+        counts[i] = 0;
+        tempCounts[i] = 0;
+    }
+
+    // Aggregate all the results together by reading from the pipe in the parent
+
     for(int i = 0; i < argc-1; i++) { // loop for each file processed
-        // NEED EH
-        read(pipefds[0], tempCounts, sizeof(tempCounts)); // read in child's processed file results written
+
+        // read in child's processed file results written
+        if (read(pipefds[0], tempCounts, sizeof(tempCounts)) == -1) {
+            perror("read");
+            return 1;
+        } 
+
         for(int len = 0; len < MAX_WORD_LEN; len++) {
             counts[len] += tempCounts[len];
         }
     }
-    // TODO Change this code to print out the total count of words of each length
-    for (int i = 1; i <= MAX_WORD_LEN; i++) {
-        printf("%d-Character Words: %d\n", i, counts[i]);
+
+    if (close(pipefds[0])) {
+        perror("close");
+        return 1;
     }
+
+    // Print out the total count of words of each length
+    for (int i = 0; i < MAX_WORD_LEN; i++) {
+        printf("%d-Character Words: %d\n", i+1, counts[i]);
+    }
+
     return 0;
 }
