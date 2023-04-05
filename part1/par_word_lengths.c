@@ -146,12 +146,14 @@ int main(int argc, char **argv) {
         int status;
         if (wait(&status) == -1) {
             perror("wait");
+            close(pipefds[0]);
             return 1;
         }
 
         if (WIFEXITED(status)) {
             int exit_status = WEXITSTATUS(status);
             if (exit_status == -1) {
+                close(pipefds[0]);
                 return 1;
             }
         }
@@ -172,6 +174,7 @@ int main(int argc, char **argv) {
         // read in child's processed file results written
         if (read(pipefds[0], tempCounts, sizeof(tempCounts)) == -1) {
             perror("read");
+            close(pipefds[0]);
             return 1;
         } 
 
