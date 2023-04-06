@@ -100,23 +100,11 @@ int run_pipelined_commands(strvec_t *tokens) {
     }
     // create temp strvec obj
     strvec_t temp_tokens;
-    if(strvec_init(&temp_tokens) == -1) {
-        printf("strvec_init error\n");
-        strvec_clear(&temp_tokens);
-        for (int i = 0; i < n; i++) {
-            close(pipe_fds[2*i]);
-            close(pipe_fds[2*i + 1]);
-        }
-        free(pipe_fds);
-        return -1;
-    }
 
     // loop through, taking the last command of the piped command out each time, until we have no more pipes
     int last_pipe_index = 0;
-    for (int i = n; i >= 0; i--) {
-        // printf("here\n");
+    for (int i = n; i >= 0; i--) { 
         last_pipe_index = strvec_find_last(tokens, "|");
-        // printf("%d pipe location: %d\ntoken length: %d", i, last_pipe_index, tokens->length);
 
         // put the desired slice into temp_tokens
         if (strvec_slice(tokens, &temp_tokens, last_pipe_index+1, tokens->length) == -1) {
@@ -130,13 +118,6 @@ int run_pipelined_commands(strvec_t *tokens) {
             return -1;
         }
         
-        // printf("here\n");
-        
-        // for (int j = 0; j<temp_tokens.length; j++) {
-        //     printf("%s ", temp_tokens.data[j]);
-        // }
-        // printf("\n");
-
         strvec_take(tokens, last_pipe_index);
         if (i == n) {
             // last piped command
@@ -156,7 +137,7 @@ int run_pipelined_commands(strvec_t *tokens) {
 
                 return -1;
             }
-
+            strvec_clear(&temp_tokens);
         } else if (i == 0) {
             // first piped command
             if (run_piped_command(&temp_tokens, pipe_fds, n, -1, 2*i + 1)) {
@@ -175,7 +156,7 @@ int run_pipelined_commands(strvec_t *tokens) {
 
                 return -1;
             }
-
+            strvec_clear(&temp_tokens);
         } else {
             // interior piped commands
             if (run_piped_command(&temp_tokens, pipe_fds, n, 2*(i-1), 2*i + 1)) {
@@ -194,7 +175,7 @@ int run_pipelined_commands(strvec_t *tokens) {
                 return -1;
 
             }
-
+            strvec_clear(&temp_tokens);
         }
     }
     strvec_clear(&temp_tokens);
@@ -213,7 +194,6 @@ int run_pipelined_commands(strvec_t *tokens) {
     for (int i = 0; i<n+1; i++) {
         wait(NULL);
     }
-
 
     return 0;
 }
